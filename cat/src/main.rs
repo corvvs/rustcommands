@@ -25,7 +25,11 @@
 //         Control characters print as ‘^X’ for control-X; the delete character (octal 0177) prints as ‘^?’.
 //         Non-ASCII characters (with the high bit set) are printed as ‘M-’ (for meta) followed by the character for the low 7 bits.
 
-use std::env;
+use std::{
+    env,
+    io::{Read, Write},
+    os::unix::process,
+};
 
 struct Option {
     // -b
@@ -54,7 +58,37 @@ struct Option {
     show_non_printing_characters: bool,
 }
 
+const READ_BUFFER_SIZE: usize = 4096;
+fn subcat(file_path: &String) -> std::io::Result<i32> {
+    let mut i_handle = std::fs::File::open(file_path)?;
+    let mut buffer = [0; READ_BUFFER_SIZE];
+    let stdout = std::io::stdout();
+    loop {
+        let read_bytes = i_handle.read(&mut buffer)?;
+        if read_bytes == 0 {
+            break;
+        }
+        let mut stdout_lock = stdout.lock();
+        stdout_lock.write_all(&buffer[..read_bytes])?;
+    }
+    Ok(0)
+}
+
 fn main() {
     let argv: Vec<String> = env::args().collect();
     let argc = argv.len();
+
+    let file_paths = &argv[1..argc];
+
+    // NOTE: 取得処理は file_path ごとに独立に実行できると仮定してしまう
+    for file_path in file_paths {
+        match subcat(file_path) {
+            Ok(0) => {}
+            Ok(status) => std::process::exit(status),
+            Err(err) => {
+                eprintln!("error: {}", err);
+                std::process::exit(1);
+            }
+        }
+    }
 }
